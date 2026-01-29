@@ -1,0 +1,1 @@
+This folder stores generated MP3 files at runtime.

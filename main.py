@@ -1,54 +1,47 @@
-import uuid
-import subprocess
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+import subprocess
+import uuid
 import os
 
-# ---------- CONFIG ----------
+app = FastAPI()
+
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# ---------- APP ----------
-app = FastAPI(title="YouTube to MP3 API")
-
-# Serve MP3 files publicly
-app.mount("/downloads", StaticFiles(directory=DOWNLOAD_DIR), name="downloads")
-
-# ---------- REQUEST BODY ----------
-class YouTubeRequest(BaseModel):
+class ConvertRequest(BaseModel):
     youtube_url: str
 
-# ---------- HEALTH CHECK ----------
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-# ---------- MAIN API ----------
-@app.post("/youtube-to-mp3")
-def youtube_to_mp3(payload: YouTubeRequest, request: Request):
+@app.post("/convert")
+def convert_youtube_to_mp3(data: ConvertRequest):
     file_id = str(uuid.uuid4())
     output_path = f"{DOWNLOAD_DIR}/{file_id}.mp3"
 
-    try:
-        subprocess.run(
-            [
-                "yt-dlp",
-                "-f", "bestaudio",
-                "-x",
-                "--audio-format", "mp3",
-                "--audio-quality", "0",
-                payload.youtube_url,
-                "-o", output_path
-            ],
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=400, detail="Failed to download or convert audio")
+    command = [
+        "yt-dlp",
+        "-x",
+        "--audio-format", "mp3",
+        "-o", output_path,
+        data.youtube_url
+    ]
 
-    base_url = str(request.base_url).rstrip("/")
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError:
+        raise HTTPException(status_code=500, detail="Failed to convert video")
+
+    public_url = os.getenv("PUBLIC_URL")
+    if not public_url:
+        raise HTTPException(status_code=500, detail="PUBLIC_URL not set")
 
     return {
-        "file_id": file_id,
-        "mp3_url": f"{base_url}/downloads/{file_id}.mp3"
+        "mp3_url": f"{public_url}/downloads/{file_id}.mp3"
     }
+
+@app.get("/downloads/{file_name}")
+def download_file(file_name: str):
+    file_path = f"{DOWNLOAD_DIR}/{file_name}"
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, media_type="audio/mpeg")
