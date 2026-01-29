@@ -27,7 +27,9 @@ def convert_youtube_to_60s_mp3(data: ConvertRequest):
     # Step 1: Download best audio
     download_cmd = [
         "yt-dlp",
-        "-f", "bestaudio",
+        "--cookies", "cookies.txt",
+        "-x",
+        "--audio-format", "mp3",
         "-o", temp_audio,
         data.youtube_url
     ]
